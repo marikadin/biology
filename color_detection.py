@@ -23,6 +23,9 @@ def process_image_folder(folder_path, target_color):
     time_diffs = []
     images = {}
 
+    # Maximum possible difference between any two RGB colors (255, 255, 255) and (0, 0, 0)
+    max_diff = np.linalg.norm(np.array([255, 255, 255]) - np.array([0, 0, 0]))
+
     for filename in os.listdir(folder_path):
         if filename.endswith(('.png', '.jpg', '.jpeg')):
             image_path = os.path.join(folder_path, filename)
@@ -36,8 +39,12 @@ def process_image_folder(folder_path, target_color):
             min_idx = np.unravel_index(np.argmin(diff), diff.shape)
             min_color = image_rgb[min_idx]
 
+            # Calculate the color difference (Euclidean distance)
             min_diff = np.min(diff)
-            time_diffs.append((filename, min_diff, min_color, image_rgb))
+            # Normalize the difference to a percentage (0-100%)
+            min_diff_percent = (min_diff / max_diff) * 100
+
+            time_diffs.append((filename, min_diff_percent, min_color, image_rgb))
             images[filename] = image_rgb  # Store full image for hovering
 
     # Sort by the datetime extracted from the filename
@@ -53,7 +60,10 @@ def get_screen_size():
 def plot_time_diffs(time_diffs, images):
     filenames, diffs, colors, _ = zip(*time_diffs)
     screen_width, screen_height = get_screen_size()
-
+    diffs = list(diffs)  # Convert tuple to list
+    for i in range(len(diffs)):
+        diffs[i] = 100 - diffs[i]
+        
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(range(len(filenames)), diffs, marker='o', linestyle='-')
 
@@ -63,7 +73,7 @@ def plot_time_diffs(time_diffs, images):
     ax.set_xticklabels(filenames[::step][15:23], rotation=90)
 
     ax.set_xlabel('Image Filename')
-    ax.set_ylabel('Color Difference')
+    ax.set_ylabel('Color Similarity (%)')
     ax.set_title('Color Difference Over Time')
 
     cursor = mplcursors.cursor(ax, hover=True)
@@ -98,7 +108,7 @@ def plot_time_diffs(time_diffs, images):
         axes[1].axis("off")
         axes[1].set_title("Color")
 
-        sel.annotation.set_text(f"{filename}\nDiff: {color_diff:.2f}")
+        sel.annotation.set_text(f"{filename}\nSimilarity: {color_diff:.2f}%")
 
         # Move the new figure window to the bottom-right corner
         new_fig.canvas.manager.window.wm_geometry(f"+{screen_width-450}+{screen_height-250}")
@@ -109,7 +119,7 @@ def plot_time_diffs(time_diffs, images):
     plt.show()
 
 # Example usage
-folder_path = r'crops\rect_2'
+folder_path = r'crops\rect_1'
 target_color = np.array([0, 100, 0])  # Example target color
 time_diffs, images = process_image_folder(folder_path, target_color)
 plot_time_diffs(time_diffs, images)
