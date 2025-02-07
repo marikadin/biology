@@ -6,6 +6,7 @@ import mplcursors
 import tkinter as tk
 import re
 from datetime import datetime
+from matplotlib.widgets import CheckButtons
 
 def extract_datetime_from_filename(filename):
     """Extract the datetime from the filename."""
@@ -64,6 +65,9 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names):
     # Color map for the different folders
     colors_list = plt.cm.get_cmap('tab10', len(folder_names)).colors
 
+    # Store line plots for toggling visibility
+    lines = []
+
     for idx, (time_diffs, folder_name) in enumerate(zip(all_time_diffs, folder_names)):
         filenames, diffs, colors, _ = zip(*time_diffs)
         dates = [extract_datetime_from_filename(filename) for filename in filenames]
@@ -72,7 +76,8 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names):
         for i in range(len(diffs)):
             diffs[i] = 100 - diffs[i]
 
-        ax.plot(range(len(filenames)), diffs, marker='o', linestyle='-', color=colors_list[idx], label=folder_name)
+        line, = ax.plot(range(len(filenames)), diffs, marker='o', linestyle='-', color=colors_list[idx], label=folder_name)
+        lines.append(line)
 
     # Reduce x-axis labels
     step = max(1, len(filenames) // 10)  # Show at most 10 labels
@@ -124,6 +129,18 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names):
 
     plt.tight_layout()
     plt.legend()
+
+    # Create a CheckButtons widget to toggle line visibility
+    rax = plt.axes([0.933, 0.775, 0.052, 0.15])
+    check = CheckButtons(rax, folder_names, [True] * len(folder_names))
+
+    def toggle_line(label):
+        index = folder_names.index(label)
+        lines[index].set_visible(not lines[index].get_visible())
+        plt.draw()
+
+    check.on_clicked(toggle_line)
+
     plt.show()
 
 def ask_user_for_folder_selection(parent_folder):
