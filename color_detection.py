@@ -108,7 +108,7 @@ def plot_time_diffs(time_diffs, images):
         axes[1].axis("off")
         axes[1].set_title("Color")
 
-        sel.annotation.set_text(f"{filename}\nSimilarity: {color_diff:.2f}%")
+        sel.annotation.set_text(f"{filename}\nSimilarity: {color_diff:.2f}%\nRGB: {int(color[0]),int(color[1]),int(color[2])}")
 
         # Move the new figure window to the bottom-right corner
         new_fig.canvas.manager.window.wm_geometry(f"+{screen_width-450}+{screen_height-250}")
@@ -120,6 +120,6 @@ def plot_time_diffs(time_diffs, images):
 
 # Example usage
 folder_path = r'crops\rect_1'
-target_color = np.array([0, 100, 0])  # Example target color
+target_color = np.array([0, 50, 0])  # Example target color
 time_diffs, images = process_image_folder(folder_path, target_color)
 plot_time_diffs(time_diffs, images)
