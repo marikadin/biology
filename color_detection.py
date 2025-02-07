@@ -23,7 +23,6 @@ def process_image_folder(folder_path, target_color):
     time_diffs = []
     images = {}
 
-    # Maximum possible difference between any two RGB colors (255, 255, 255) and (0, 0, 0)
     max_diff = np.linalg.norm(np.array([255, 255, 255]) - np.array([0, 0, 0]))
 
     for filename in os.listdir(folder_path):
@@ -57,24 +56,32 @@ def get_screen_size():
     root.withdraw()  # Hide main tkinter window
     return root.winfo_screenwidth(), root.winfo_screenheight()
 
-def plot_time_diffs(time_diffs, images):
-    filenames, diffs, colors, _ = zip(*time_diffs)
+def plot_all_time_diffs(all_time_diffs, all_images, folder_names):
     screen_width, screen_height = get_screen_size()
-    diffs = list(diffs)  # Convert tuple to list
-    for i in range(len(diffs)):
-        diffs[i] = 100 - diffs[i]
-        
+
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(range(len(filenames)), diffs, marker='o', linestyle='-')
+
+    # Color map for the different folders
+    colors_list = plt.cm.get_cmap('tab10', len(folder_names)).colors
+
+    for idx, (time_diffs, folder_name) in enumerate(zip(all_time_diffs, folder_names)):
+        filenames, diffs, colors, _ = zip(*time_diffs)
+        dates = [extract_datetime_from_filename(filename) for filename in filenames]
+        dates = [date.strftime("%Y-%m-%d %H:%M") for date in dates]
+        diffs = list(diffs)
+        for i in range(len(diffs)):
+            diffs[i] = 100 - diffs[i]
+
+        ax.plot(range(len(filenames)), diffs, marker='o', linestyle='-', color=colors_list[idx], label=folder_name)
 
     # Reduce x-axis labels
     step = max(1, len(filenames) // 10)  # Show at most 10 labels
     ax.set_xticks(range(0, len(filenames), step))
-    ax.set_xticklabels(filenames[::step][15:23], rotation=90)
+    ax.set_xticklabels(dates[::step], rotation=45)
 
-    ax.set_xlabel('Image Filename')
+    ax.set_xlabel('Time')
     ax.set_ylabel('Color Similarity (%)')
-    ax.set_title('Color Difference Over Time')
+    ax.set_title('Color Difference Over Time for Selected Folders')
 
     cursor = mplcursors.cursor(ax, hover=True)
 
@@ -87,7 +94,7 @@ def plot_time_diffs(time_diffs, images):
         filename = filenames[idx]
         color_diff = diffs[idx]
         color = colors[idx]
-        image = images[filename]
+        image = all_images[filename]
 
         # Close previous figure if it exists
         if previous_fig[0] is not None:
@@ -116,10 +123,41 @@ def plot_time_diffs(time_diffs, images):
         plt.show(block=False)
 
     plt.tight_layout()
+    plt.legend()
     plt.show()
 
+def ask_user_for_folder_selection(parent_folder):
+    """Ask the user to select which subfolders inside a parent folder to display."""
+    subfolders = [f.name for f in os.scandir(parent_folder) if f.is_dir()]
+    print("Available subfolders:")
+    for idx, subfolder in enumerate(subfolders, 1):
+        print(f"{idx}. {subfolder}")
+
+    selected_indexes = input("Enter the numbers of the subfolders to display (comma-separated): ").split(',')
+    selected_folders = [subfolders[int(idx) - 1] for idx in selected_indexes]
+
+    return selected_folders
+
+def plot_selected_folders(selected_folders, parent_folder, target_color):
+    """Process and plot images from selected subfolders."""
+    all_time_diffs = []
+    all_images = {}
+
+    for folder in selected_folders:
+        folder_path = os.path.join(parent_folder, folder)
+        time_diffs, images = process_image_folder(folder_path, target_color)
+        all_time_diffs.append(time_diffs)
+        all_images.update(images)
+
+    # Plot all selected folders on the same plot
+    plot_all_time_diffs(all_time_diffs, all_images, selected_folders)
+
 # Example usage
-folder_path = r'crops\rect_1'
+parent_folder = 'crops'
 target_color = np.array([0, 50, 0])  # Example target color
-time_diffs, images = process_image_folder(folder_path, target_color)
-plot_time_diffs(time_diffs, images)
+
+# Ask the user to select subfolders
+selected_folders = ask_user_for_folder_selection(parent_folder)
+
+# Plot the selected folders
+plot_selected_folders(selected_folders, parent_folder, target_color)
