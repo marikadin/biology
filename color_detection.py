@@ -129,8 +129,8 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names):
 
     plt.tight_layout()
     plt.legend()
-
-    # Create a CheckButtons widget to toggle line visibility
+    names = [f"{folder_name}({color})" for folder_name, color in folder_names, colors_list]
+    print(names)
     rax = plt.axes([0.933, 0.775, 0.052, 0.15])
     check = CheckButtons(rax, folder_names, [True] * len(folder_names))
 
