@@ -129,10 +129,11 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names):
 
     plt.tight_layout()
     plt.legend()
-    names = [f"{folder_name}({color})" for folder_name, color in folder_names, colors_list]
-    print(names)
     rax = plt.axes([0.933, 0.775, 0.052, 0.15])
     check = CheckButtons(rax, folder_names, [True] * len(folder_names))
+
+    # Set the label colors to match the folder colors
+    [label.set_color(color) for label, color in zip(check.labels, colors_list)]
 
     def toggle_line(label):
         index = folder_names.index(label)
