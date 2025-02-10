@@ -67,17 +67,30 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names):
 
     # Store line plots for toggling visibility
     lines = []
+    regression_lines = []
 
     for idx, (time_diffs, folder_name) in enumerate(zip(all_time_diffs, folder_names)):
         filenames, diffs, colors, _ = zip(*time_diffs)
         dates = [extract_datetime_from_filename(filename) for filename in filenames]
         dates = [date.strftime("%Y-%m-%d %H:%M") for date in dates]
         diffs = list(diffs)
+
         for i in range(len(diffs)):
             diffs[i] = 100 - diffs[i]
 
-        line, = ax.plot(range(len(filenames)), diffs, marker='o', linestyle='-', color=colors_list[idx], label=folder_name)
+        x_values = np.arange(len(filenames))  # X-axis values (indices)
+        y_values = np.array(diffs)  # Y-axis values (similarity %)
+
+        # Plot the main line
+        line, = ax.plot(x_values, y_values, marker='o', linestyle='-', color=colors_list[idx])
         lines.append(line)
+
+        # Compute and plot the linear regression line
+        if len(x_values) > 1:  # Avoid issues with single data points
+            coeffs = np.polyfit(x_values, y_values, 1)  # Linear regression (degree 1)
+            regression_fn = np.poly1d(coeffs)
+            reg_line, = ax.plot(x_values, regression_fn(x_values), linestyle='--', color=colors_list[idx], alpha=0.7)
+            regression_lines.append(reg_line)
 
     # Reduce x-axis labels
     step = max(1, len(filenames) // 10)  # Show at most 10 labels
@@ -129,6 +142,7 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names):
 
     plt.tight_layout()
     plt.legend()
+
     rax = plt.axes([0.933, 0.775, 0.052, 0.15])
     check = CheckButtons(rax, folder_names, [True] * len(folder_names))
 
@@ -137,7 +151,9 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names):
 
     def toggle_line(label):
         index = folder_names.index(label)
-        lines[index].set_visible(not lines[index].get_visible())
+        visible = not lines[index].get_visible()
+        lines[index].set_visible(visible)
+        regression_lines[index].set_visible(visible)  # Toggle regression line too
         plt.draw()
 
     check.on_clicked(toggle_line)
