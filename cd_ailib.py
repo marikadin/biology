@@ -164,14 +164,8 @@ def process_image_folder(folder_path, target_color):
     time_diffs.sort(key=lambda x: extract_datetime_from_filename(x[0]))
     return time_diffs, images
 
-def get_screen_size():
-    """Get the screen width and height using tkinter."""
-    root = tk.Tk()
-    root.withdraw()
-    return root.winfo_screenwidth(), root.winfo_screenheight()
-
 def plot_all_time_diffs(all_time_diffs, all_images, folder_names, model_type='lstm'):
-    screen_width, screen_height = get_screen_size()
+    screen_width, screen_height = ColorAnalyzer._get_screen_size()
     fig, ax = plt.subplots(figsize=(10, 5))
     colors_list = plt.cm.get_cmap('tab10', len(folder_names)).colors
     lines = []
@@ -287,40 +281,45 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names, model_type='ls
     check.on_clicked(toggle_line)
     plt.show()
 
-def ask_user_for_folder_selection(parent_folder):
-    """Ask the user to select which subfolders inside a parent folder to display."""
-    subfolders = [f.name for f in os.scandir(parent_folder) if f.is_dir()]
-    print("Available subfolders:")
-    for idx, subfolder in enumerate(subfolders, 1):
-        print(f"{idx}. {subfolder}")
+class ColorAnalyzer:
+    """Main class for analyzing color changes in image sequences"""
+    def __init__(self, target_color=np.array([0, 60, 0])):
+        self.target_color = target_color
+        self.screen_width, self.screen_height = self._get_screen_size()
 
-    selected_indexes = input("Enter the numbers of the subfolders to display (comma-separated): ").split(',')
-    selected_folders = [subfolders[int(idx) - 1] for idx in selected_indexes]
+    @staticmethod
+    def _get_screen_size():
+        """Get the screen width and height using tkinter."""
+        root = tk.Tk()
+        root.withdraw()
+        return root.winfo_screenwidth(), root.winfo_screenheight()
 
-    return selected_folders
+    def analyze_folders(self, parent_folder, selected_folders=None, model_type='lstm'):
+        """
+        Analyze color changes in selected folders
+        Args:
+            parent_folder (str): Path to parent folder
+            selected_folders (list): List of folder names to analyze. If None, all folders will be processed
+            model_type (str): Type of prediction model ('lstm' or 'linear')
+        """
+        if selected_folders is None:
+            selected_folders = [f.name for f in os.scandir(parent_folder) if f.is_dir()]
 
-def plot_selected_folders(selected_folders, parent_folder, target_color, model_type='lstm'):
-    """Process and plot images from selected subfolders."""
-    all_time_diffs = []
-    all_images = {}
+        all_time_diffs = []
+        all_images = {}
 
-    for folder in selected_folders:
-        folder_path = os.path.join(parent_folder, folder)
-        time_diffs, images = process_image_folder(folder_path, target_color)
-        all_time_diffs.append(time_diffs)
-        all_images.update(images)
+        for folder in selected_folders:
+            folder_path = os.path.join(parent_folder, folder)
+            time_diffs, images = self._process_image_folder(folder_path)
+            all_time_diffs.append(time_diffs)
+            all_images.update(images)
 
-    plot_all_time_diffs(all_time_diffs, all_images, selected_folders, model_type)
+        return self.plot_results(all_time_diffs, all_images, selected_folders, model_type)
 
-if __name__ == "__main__":
-    parent_folder = 'crops'
-    target_color = np.array([0, 60, 0])  # Example target color
+    def _process_image_folder(self, folder_path):
+        """Process images in a folder and calculate color differences"""
+        return process_image_folder(folder_path, self.target_color)
 
-    # Let user choose the model type
-    model_type = input("Choose model type (lstm/linear): ").lower()
-    while model_type not in ['lstm', 'linear']:
-        print("Invalid model type. Please choose 'lstm' or 'linear'")
-        model_type = input("Choose model type (lstm/linear): ").lower()
-
-    selected_folders = ask_user_for_folder_selection(parent_folder)
-    plot_selected_folders(selected_folders, parent_folder, target_color, model_type)
+    def plot_results(self, all_time_diffs, all_images, folder_names, model_type='lstm'):
+        """Plot analysis results with predictions"""
+        return plot_all_time_diffs(all_time_diffs, all_images, folder_names, model_type)

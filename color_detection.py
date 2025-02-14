@@ -68,11 +68,17 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names):
     # Store line plots for toggling visibility
     lines = []
     regression_lines = []
+    
+    # Store data for hover functionality
+    all_hover_data = []
 
     for idx, (time_diffs, folder_name) in enumerate(zip(all_time_diffs, folder_names)):
+        if not time_diffs:  # Skip empty folders
+            continue
+            
         filenames, diffs, colors, _ = zip(*time_diffs)
         dates = [extract_datetime_from_filename(filename) for filename in filenames]
-        dates = [date.strftime("%Y-%m-%d %H:%M") for date in dates]
+        dates = [date.strftime("%Y-%m-%d %H:%M") if date else "Unknown" for date in dates]
         diffs = list(diffs)
 
         for i in range(len(diffs)):
@@ -82,116 +88,179 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names):
         y_values = np.array(diffs)  # Y-axis values (similarity %)
 
         # Plot the main line
-        line, = ax.plot(x_values, y_values, marker='o', linestyle='-', color=colors_list[idx])
+        line, = ax.plot(x_values, y_values, marker='o', linestyle='-', 
+                       color=colors_list[idx], label=folder_name)
         lines.append(line)
+        
+        # Store hover data
+        all_hover_data.append({
+            'line': line,
+            'filenames': filenames,
+            'diffs': diffs,
+            'colors': colors,
+            'folder_name': folder_name
+        })
 
         # Compute and plot the linear regression line
         if len(x_values) > 1:  # Avoid issues with single data points
             coeffs = np.polyfit(x_values, y_values, 1)  # Linear regression (degree 1)
             regression_fn = np.poly1d(coeffs)
-            reg_line, = ax.plot(x_values, regression_fn(x_values), linestyle='--', color=colors_list[idx], alpha=0.7)
+            reg_line, = ax.plot(x_values, regression_fn(x_values), 
+                              linestyle='--', color=colors_list[idx], alpha=0.7)
             regression_lines.append(reg_line)
 
-    # Reduce x-axis labels
-    step = max(1, len(filenames) // 10)  # Show at most 10 labels
-    ax.set_xticks(range(0, len(filenames), step))
-    ax.set_xticklabels(dates[::step], rotation=45)
-
-    ax.set_xlabel('Time')
-    ax.set_ylabel('Color Similarity (%)')
-    ax.set_title('Color Difference Over Time for Selected Folders')
-
-    cursor = mplcursors.cursor(ax, hover=True)
+    # Create single cursor for all lines
+    cursor = mplcursors.cursor(lines, hover=True)
 
     # Track previous figure to close before opening a new one
     previous_fig = [None]
 
     @cursor.connect("add")
     def on_hover(sel):
-        idx = int(sel.index)
-        filename = filenames[idx]
-        color_diff = diffs[idx]
-        color = colors[idx]
-        image = all_images[filename]
+        # Find which line was hovered
+        for hover_data in all_hover_data:
+            if sel.artist == hover_data['line']:
+                idx = int(sel.index)
+                filename = hover_data['filenames'][idx]
+                color_diff = hover_data['diffs'][idx]
+                color = hover_data['colors'][idx]
+                folder_name = hover_data['folder_name']
+                image = all_images[filename]
 
-        # Close previous figure if it exists
-        if previous_fig[0] is not None:
-            plt.close(previous_fig[0])
+                # Close previous figure if it exists
+                if previous_fig[0] is not None:
+                    plt.close(previous_fig[0])
 
-        # Create a small color patch
-        color_patch = np.full((50, 50, 3), color, dtype=np.uint8)
+                # Create a small color patch
+                color_patch = np.full((50, 50, 3), color, dtype=np.uint8)
 
-        # Display the image and color patch in a new figure
-        new_fig, axes = plt.subplots(1, 2, figsize=(4, 2))
-        previous_fig[0] = new_fig  # Store reference to close later
+                # Display the image and color patch in a new figure
+                new_fig, axes = plt.subplots(1, 2, figsize=(4, 2))
+                previous_fig[0] = new_fig  # Store reference to close later
 
-        axes[0].imshow(image)
-        axes[0].axis("off")
-        axes[0].set_title("Image")
+                axes[0].imshow(image)
+                axes[0].axis("off")
+                axes[0].set_title("Image")
 
-        axes[1].imshow(color_patch)
-        axes[1].axis("off")
-        axes[1].set_title("Color")
+                axes[1].imshow(color_patch)
+                axes[1].axis("off")
+                axes[1].set_title("Color")
 
-        sel.annotation.set_text(f"{filename}\nSimilarity: {color_diff:.2f}%\nRGB: {int(color[0]),int(color[1]),int(color[2])}")
+                sel.annotation.set_text(
+                    f"Folder: {folder_name}\n"
+                    f"File: {filename}\n"
+                    f"Similarity: {color_diff:.2f}%\n"
+                    f"RGB: {int(color[0]),int(color[1]),int(color[2])}"
+                )
 
-        # Move the new figure window to the bottom-right corner
-        new_fig.canvas.manager.window.wm_geometry(f"+{screen_width-450}+{screen_height-250}")
+                # Move the new figure window to the bottom-right corner
+                new_fig.canvas.manager.window.wm_geometry(
+                    f"+{screen_width-450}+{screen_height-250}"
+                )
 
-        plt.show(block=False)
+                plt.show(block=False)
+                break
+
+    # Reduce x-axis labels if there are any data points
+    if lines:  # Only proceed if we have plotted any lines
+        step = max(1, len(filenames) // 10)  # Show at most 10 labels
+        ax.set_xticks(range(0, len(filenames), step))
+        ax.set_xticklabels(dates[::step], rotation=45)
+
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Color Similarity (%)')
+    ax.set_title('Color Difference Over Time for Selected Folders')
 
     plt.tight_layout()
-    plt.legend()
+    
+    # Only create legend and checkbuttons if we have data
+    if lines:
+        plt.legend()
+        
+        # Create checkbuttons for toggling lines
+        rax = plt.axes([0.933, 0.775, 0.052, 0.15])
+        check = CheckButtons(rax, folder_names, [True] * len(folder_names))
 
-    rax = plt.axes([0.933, 0.775, 0.052, 0.15])
-    check = CheckButtons(rax, folder_names, [True] * len(folder_names))
+        # Set the label colors to match the folder colors
+        [label.set_color(color) for label, color in zip(check.labels, colors_list)]
 
-    # Set the label colors to match the folder colors
-    [label.set_color(color) for label, color in zip(check.labels, colors_list)]
+        def toggle_line(label):
+            index = folder_names.index(label)
+            if index < len(lines):  # Make sure we have a line to toggle
+                visible = not lines[index].get_visible()
+                lines[index].set_visible(visible)
+                if index < len(regression_lines):
+                    regression_lines[index].set_visible(visible)
+            plt.draw()
 
-    def toggle_line(label):
-        index = folder_names.index(label)
-        visible = not lines[index].get_visible()
-        lines[index].set_visible(visible)
-        regression_lines[index].set_visible(visible)  # Toggle regression line too
-        plt.draw()
-
-    check.on_clicked(toggle_line)
+        check.on_clicked(toggle_line)
 
     plt.show()
 
 def ask_user_for_folder_selection(parent_folder):
     """Ask the user to select which subfolders inside a parent folder to display."""
     subfolders = [f.name for f in os.scandir(parent_folder) if f.is_dir()]
+    if not subfolders:
+        print(f"No subfolders found in {parent_folder}")
+        return []
+        
     print("Available subfolders:")
     for idx, subfolder in enumerate(subfolders, 1):
         print(f"{idx}. {subfolder}")
 
-    selected_indexes = input("Enter the numbers of the subfolders to display (comma-separated): ").split(',')
-    selected_folders = [subfolders[int(idx) - 1] for idx in selected_indexes]
+    while True:
+        try:
+            selected_indexes = input("Enter the numbers of the subfolders to display (comma-separated): ").split(',')
+            selected_indexes = [int(idx.strip()) for idx in selected_indexes]
+            if all(1 <= idx <= len(subfolders) for idx in selected_indexes):
+                break
+            print("Please enter valid folder numbers.")
+        except ValueError:
+            print("Please enter valid numbers separated by commas.")
 
+    # Convert to set and back to list to remove duplicates while preserving order
+    selected_folders = list(dict.fromkeys(subfolders[idx - 1] for idx in selected_indexes))
     return selected_folders
 
 def plot_selected_folders(selected_folders, parent_folder, target_color):
     """Process and plot images from selected subfolders."""
     all_time_diffs = []
     all_images = {}
-
+    
+    # Process each selected folder only once
+    processed_folders = []
+    
     for folder in selected_folders:
+        if folder in processed_folders:
+            continue
+            
         folder_path = os.path.join(parent_folder, folder)
         time_diffs, images = process_image_folder(folder_path, target_color)
+        
         all_time_diffs.append(time_diffs)
         all_images.update(images)
-
+        processed_folders.append(folder)
+    
+    if not all_time_diffs:
+        print("No data to plot. Please check if the selected folders contain valid images.")
+        return
+        
     # Plot all selected folders on the same plot
-    plot_all_time_diffs(all_time_diffs, all_images, selected_folders)
+    plot_all_time_diffs(all_time_diffs, all_images, processed_folders)
 
-# Example usage
-parent_folder = 'crops'
-target_color = np.array([0, 60, 0])  # Example target color
+def main():
+    # Example usage
+    parent_folder = 'crops'
+    target_color = np.array([0, 30, 0])  # Example target color
 
-# Ask the user to select subfolders
-selected_folders = ask_user_for_folder_selection(parent_folder)
+    # Ask the user to select subfolders
+    selected_folders = ask_user_for_folder_selection(parent_folder)
+    
+    if selected_folders:
+        # Plot the selected folders
+        plot_selected_folders(selected_folders, parent_folder, target_color)
+    else:
+        print("No folders selected. Exiting.")
 
-# Plot the selected folders
-plot_selected_folders(selected_folders, parent_folder, target_color)
+if __name__ == "__main__":
+    main()
