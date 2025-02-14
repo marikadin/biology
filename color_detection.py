@@ -188,7 +188,7 @@ def plot_selected_folders(selected_folders, parent_folder, target_color):
 
 # Example usage
 parent_folder = 'crops'
-target_color = np.array([0, 50, 0])  # Example target color
+target_color = np.array([0, 100, 0])  # Example target color
 
 # Ask the user to select subfolders
 selected_folders = ask_user_for_folder_selection(parent_folder)
