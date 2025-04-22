@@ -70,17 +70,22 @@ class LSTMPredictor(TimeSeriesModel):
 class LinearRegressionPredictor(TimeSeriesModel):
     def __init__(self, seq_length=3):
         self.seq_length = seq_length
-        self.model = LinearRegression()
+        self.weights = None
+        self.bias = None
         
     def train(self, X, y):
         X = X.reshape((X.shape[0], X.shape[1]))
-        self.model.fit(X, y)
+        # Add bias term
+        X_b = np.c_[np.ones((X.shape[0], 1)), X]
+        # Calculate weights using normal equation: w = (X^T X)^-1 X^T y
+        theta = np.linalg.inv(X_b.T.dot(X_b)).dot(X_b.T).dot(y)
+        self.bias = theta[0]
+        self.weights = theta[1:]
     
     def predict(self, X):
         X = X.reshape((X.shape[0], X.shape[1]))
-        return self.model.predict(X).reshape(-1, 1)
-
-def predict_future_values(data, model_type='lstm', n_future=5, seq_length=3):
+        return (X.dot(self.weights) + self.bias).reshape(-1, 1)
+def predict_future_values(data, model_type='linear', n_future=5, seq_length=3):
     """
     Predict future values using specified model
     Args:
@@ -93,9 +98,10 @@ def predict_future_values(data, model_type='lstm', n_future=5, seq_length=3):
         return None, None, None
     
     # Initialize model based on type
-    if model_type.lower() == 'lstm':
+    model_type = model_type.lower()  # Ensure lowercase for comparison
+    if model_type == 'lstm':
         model = LSTMPredictor(seq_length)
-    elif model_type.lower() == 'linear':
+    elif model_type == 'linear':
         model = LinearRegressionPredictor(seq_length)
     else:
         raise ValueError("Model type must be 'lstm' or 'linear'")
@@ -115,7 +121,7 @@ def predict_future_values(data, model_type='lstm', n_future=5, seq_length=3):
     for i in range(seq_length, len(scaled_data)):
         seq = scaled_data[i-seq_length:i].reshape(1, seq_length)
         pred = model.predict(seq)
-        existing_predictions.append(pred[0, 0])
+        existing_predictions.append(pred[0] if isinstance(pred, np.ndarray) else pred[0, 0])
     
     # Predict future values
     future_predictions = []
@@ -123,8 +129,9 @@ def predict_future_values(data, model_type='lstm', n_future=5, seq_length=3):
     
     for _ in range(n_future):
         next_pred = model.predict(last_sequence.reshape(1, seq_length))
-        future_predictions.append(next_pred[0, 0])
-        last_sequence = np.vstack([last_sequence[1:], next_pred])
+        next_pred_value = next_pred[0] if isinstance(next_pred, np.ndarray) else next_pred[0, 0]
+        future_predictions.append(next_pred_value)
+        last_sequence = np.vstack([last_sequence[1:], next_pred_value])
     
     # Inverse transform predictions
     existing_predictions = scaler.inverse_transform(np.array(existing_predictions).reshape(-1, 1))
@@ -163,9 +170,12 @@ def process_image_folder(folder_path, target_color):
 
     time_diffs.sort(key=lambda x: extract_datetime_from_filename(x[0]))
     return time_diffs, images
-
 def plot_all_time_diffs(all_time_diffs, all_images, folder_names, model_type='lstm'):
-    screen_width, screen_height = ColorAnalyzer._get_screen_size()
+    root = tk.Tk()
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    root.withdraw()
+
     fig, ax = plt.subplots(figsize=(10, 5))
     colors_list = plt.cm.get_cmap('tab10', len(folder_names)).colors
     lines = []
@@ -185,7 +195,8 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names, model_type='ls
         y_values = np.array(diffs)
 
         # Plot the main line
-        line, = ax.plot(x_values, y_values, marker='o', linestyle='-', color=colors_list[idx])
+        line, = ax.plot(x_values, y_values, marker='o', linestyle='-', color=colors_list[idx], 
+                       label=f'{folder_name} (actual)')
         lines.append(line)
 
         # Compute and plot predictions
@@ -197,13 +208,14 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names, model_type='ls
                 pred_x = np.arange(3, len(filenames))
                 pred_line, = ax.plot(pred_x, existing_pred, 
                                    linestyle='--', color=colors_list[idx], alpha=0.7,
-                                   label=f'{folder_name} {model_type.upper()}')
+                                   label=f'{folder_name} ({model_type.upper()} prediction)')
                 prediction_lines.append(pred_line)
                 
                 # Plot future predictions
                 future_x = np.arange(len(filenames), len(filenames) + 5)
                 future_line, = ax.plot(future_x, future_pred, 
-                                     linestyle=':', color=colors_list[idx], alpha=0.5)
+                                     linestyle=':', color=colors_list[idx], alpha=0.5,
+                                     label=f'{folder_name} (future {model_type.upper()})')
                 future_lines.append(future_line)
                 
                 # Add prediction confidence interval
@@ -228,37 +240,45 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names, model_type='ls
     ax.set_ylabel('Color Similarity (%)')
     ax.set_title(f'Color Graph With {model_type.upper()} Predictions')
 
-    cursor = mplcursors.cursor(ax, hover=True)
+    cursor = mplcursors.cursor(lines, hover=True)
     previous_fig = [None]
 
     @cursor.connect("add")
     def on_hover(sel):
-        idx = int(sel.index)
-        filename = filenames[idx]
-        color_diff = diffs[idx]
-        color = colors[idx]
-        image = all_images[filename]
+        # Find which line was hovered
+        for line_idx, line in enumerate(lines):
+            if line == sel.artist:
+                # Get data for the correct folder
+                time_diffs = all_time_diffs[line_idx]
+                filenames, diffs, colors, _ = zip(*time_diffs)
+                
+                idx = int(sel.index)
+                filename = filenames[idx]
+                color_diff = diffs[idx]
+                color = colors[idx]
+                image = all_images[filename]
 
-        if previous_fig[0] is not None:
-            plt.close(previous_fig[0])
+                if previous_fig[0] is not None:
+                    plt.close(previous_fig[0])
 
-        color_patch = np.full((50, 50, 3), color, dtype=np.uint8)
+                color_patch = np.full((50, 50, 3), color, dtype=np.uint8)
 
-        new_fig, axes = plt.subplots(1, 2, figsize=(4, 2))
-        previous_fig[0] = new_fig
+                new_fig, axes = plt.subplots(1, 2, figsize=(4, 2))
+                previous_fig[0] = new_fig
 
-        axes[0].imshow(image)
-        axes[0].axis("off")
-        axes[0].set_title("Image")
+                axes[0].imshow(image)
+                axes[0].axis("off")
+                axes[0].set_title("Image")
 
-        axes[1].imshow(color_patch)
-        axes[1].axis("off")
-        axes[1].set_title("Color")
+                axes[1].imshow(color_patch)
+                axes[1].axis("off")
+                axes[1].set_title("Color")
 
-        sel.annotation.set_text(f"{filename}\nSimilarity: {color_diff:.2f}%\nRGB: {int(color[0]),int(color[1]),int(color[2])}")
+                sel.annotation.set_text(f"{filename}\nSimilarity: {100-color_diff:.2f}%\nRGB: {int(color[0]),int(color[1]),int(color[2])}")
 
-        new_fig.canvas.manager.window.wm_geometry(f"+{screen_width-450}+{screen_height-250}")
-        plt.show(block=False)
+                new_fig.canvas.manager.window.wm_geometry(f"+{screen_width-450}+{screen_height-250}")
+                plt.show(block=False)
+                break
 
     plt.tight_layout()
     plt.legend()
@@ -283,8 +303,9 @@ def plot_all_time_diffs(all_time_diffs, all_images, folder_names, model_type='ls
 
 class ColorAnalyzer:
     """Main class for analyzing color changes in image sequences"""
-    def __init__(self, target_color=np.array([0, 60, 0])):
+    def __init__(self, target_color=np.array([0, 60, 0]), model_type='lstm'):
         self.target_color = target_color
+        self.model_type = model_type
         self.screen_width, self.screen_height = self._get_screen_size()
 
     @staticmethod

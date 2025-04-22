@@ -1,4 +1,4 @@
-from cd_ai import ColorAnalyzer
+from cd_ailib import ColorAnalyzer
 from csv_graphlib import pHAnalyzer
 import numpy as np
 import os

@@ -299,7 +299,7 @@ def ask_user_for_folder_selection(parent_folder):
 
     return selected_folders
 
-def plot_selected_folders(selected_folders, parent_folder, target_color, model_type='lstm'):
+def plot_selected_folders(selected_folders, parent_folder, target_color):
     """Process and plot images from selected subfolders."""
     all_time_diffs = []
     all_images = {}
